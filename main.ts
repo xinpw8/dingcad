@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { exportModels } from './manifold_lib/worker';
 import Module from './manifold_lib/built/manifold';
-import { mainAssembly } from './main_assembly';
+import { mainAssembly } from './parts/main_assembly';
 import { createNode } from './parts/createGLTFNode';
 
 export const manifoldModule = await Module();

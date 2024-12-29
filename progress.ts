@@ -1,7 +1,6 @@
 
 import { ManifoldToplevel, Vec3, Vec2, Manifold } from './manifold_lib/built/manifold';
-import { applyColorGradient, green, blue } from './parts/colorgradient';
-import { createNode } from './parts/createGLTFNode';
+import { color, green, blue } from './parts/colorgradient';
 
 const createOLEDFace = (m: ManifoldToplevel, params: {
   oledWidth: number,
@@ -90,7 +89,7 @@ export const makeTubes = (manifoldTop: ManifoldToplevel) => {
   return fullCylinder.rotate(90, 0, 90);
 };
 
-export const mainAssembly = (m: ManifoldToplevel) => {
+export const box = (m: ManifoldToplevel) => {
   const wallThickness = 4;
   const boxWidth = 20+wallThickness;
   const boxLength = 190+wallThickness;
@@ -123,14 +122,56 @@ export const mainAssembly = (m: ManifoldToplevel) => {
   let secondCable = cable.mirror([-1, 0, 0]).translate([-4, 0, 0]);
   const cables = secondCable.add(cable).translate([-boxHeight/3 * 2, 0, 0]);
 
-  const coloredBox = applyColorGradient(box, outerDimensions);
+  const coloredBox = color(box, outerDimensions);
   let assembly = coloredBox.subtract(green(oledFace));
-  assembly = assembly.subtract(cables)
-
-
-  return createNode(assembly);
+  return assembly.subtract(cables)
 };
 
+export const mainAssembly = (m: ManifoldToplevel) => {
+  const { CrossSection } = m;
 
+  const microChipHeight = 51;
+  const microChipWidth = 21;
+  const microChipDepth = 5;
+  const points: Vec2[] = [
+    [0, 0],
+    [microChipWidth, 0],
+    [microChipWidth, microChipHeight],
+    [0, microChipHeight],
+  ];
 
+  const triangleSide = 7;
+  const trianglePoints: Vec2[] = [
+      [0, Math.sqrt(3) * triangleSide / 2],
+      [triangleSide/2,  0],
+      [triangleSide, Math.sqrt(3) * triangleSide / 2],
+  ];
+  const triangle = new CrossSection([trianglePoints])
+    .offset(-1, 'Round', undefined, 16)
+    .offset(1, 'Round', undefined, 16);
+
+  const rectWidth = 20;
+  const rectHeight = 3;
+  const rectanglePoints: Vec2[] = [
+      [0, 0],
+      [rectWidth, 0],
+      [rectWidth, rectHeight],
+      [0, rectHeight]
+  ];
+  const rectangle = new CrossSection([rectanglePoints]);
+
+  const assembly = triangle
+    .add(rectangle)
+    .add(triangle.translate(rectWidth-triangleSide))
+
+  return box(m)
+    .subtract(blue(
+    assembly.extrude(94)
+    .translate(-60, -15)
+  ));
+
+  return blue(assembly.extrude(10))
+    .add(box(m)).translate(100);
+
+};
 

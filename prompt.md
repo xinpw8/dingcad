@@ -1,9 +1,66 @@
-
-
-
-
-Library
 ```ts
+export interface SealedUint32Array<N extends number> extends Uint32Array {
+  length: N;
+}
+
+export interface SealedFloat32Array<N extends number> extends Float32Array {
+  length: N;
+}
+
+export type Vec2 = [number, number];
+export type Vec3 = [number, number, number];
+// 3x3 matrix stored in column-major order
+export type Mat3 = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
+// 4x4 matrix stored in column-major order
+export type Mat4 = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
+export type SimplePolygon = Vec2[];
+export type Polygons = SimplePolygon|SimplePolygon[];
+export type Rect = {
+  min: Vec2,
+  max: Vec2
+};
+export type Box = {
+  min: Vec3,
+  max: Vec3
+};
+export type Smoothness = {
+  halfedge: number,
+  smoothness: number
+};
+export type Properties = {
+  surfaceArea: number,
+  volume: number
+};
+export type FillRule = 'EvenOdd'|'NonZero'|'Positive'|'Negative'
+export type JoinType = 'Square'|'Round'|'Miter'
+
 import {Box, FillRule, JoinType, Mat3, Mat4, Polygons, Properties, Rect, SealedFloat32Array, SealedUint32Array, SimplePolygon, Smoothness, Vec2, Vec3} from './manifold-global-types';
 
 /**
@@ -952,422 +1009,72 @@ export class Mesh {
 }
 ```
 
-# Examples
-This is an example of a main assembly
-```ts
-import { ManifoldToplevel, Vec3, Vec2, Polygons, SimplePolygon } from './manifold_lib/built/manifold';
-import { GLTFNode } from './manifold_lib/worker';
 
-export const mainAssembly = (manifoldTop: any) => {
-  const { Manifold, Mesh } = manifoldTop as ManifoldToplevel;
+const makeWorm = (m: ManifoldToplevel, {
+  radius = 10,
+  length = 10,
+  teethHeight = 10,
+  numDivisions = 64,
+  totalTwistDegrees = 40,
+  toothLength = 25 
+} = {}) => {
+  const { Manifold, CrossSection } = m;
+  
+  // create base circle with tooth
+  const center = CrossSection.circle(radius);
+  const tooth = makeRectangle(m, {
+    width: toothLength, 
+    height: teethHeight
+  }).translate(-length/2, 0);
+  const baseSection = center.add(tooth);
 
-  const height = 10;
-  const radius = 30;
-  const offset = 20;
-  const wiggles = 12;
-  const sharpness = 0.8;
-  const n = 50;
+  // single extrude with twist
+  return baseSection.extrude(length, numDivisions, totalTwistDegrees);
+}
 
-  const positions: number[] = [];
-  const triangles: number[] = [];
-  positions.push(-offset, 0, height, -offset, 0, -height);
-  const sharpenedEdges: { halfedge: number; smoothness: number }[] = [];
+Can i change this guy to figure out what is required to make the tooth width?
 
-  const delta = Math.PI / wiggles;
-  for (let i = 0; i < 2 * wiggles; ++i) {
-    const theta = (i - wiggles) * delta;
-    const amp = 0.5 * height * Math.max(Math.cos(0.8 * theta), 0);
+it's dynamic basied on the twist degrees. like if i give it 360 itll end up being less thick 
 
-    positions.push(
-      radius * Math.cos(theta),
-      radius * Math.sin(theta),
-      amp * (i % 2 == 0 ? 1 : -1)
-    );
-    let j = i + 1;
-    if (j == 2 * wiggles) j = 0;
+ah, i get what you're trying to do. you want the tooth width to automatically adjust so that as it twists, the teeth don't overlap. let's work out the math:
 
-    const smoothness = 1 - sharpness * Math.cos((theta + delta / 2) / 2);
-    let halfedge = triangles.length + 1;
-    sharpenedEdges.push({ halfedge, smoothness });
-    triangles.push(0, 2 + i, 2 + j);
+for a full rotation (360°), the circumference is 2πr. for any given twist angle θ, the arc length that one tooth travels is:
 
-    halfedge = triangles.length + 1;
-    sharpenedEdges.push({ halfedge, smoothness });
-    triangles.push(1, 2 + j, 2 + i);
-  }
+```typescript
+const makeWorm = (m: ManifoldToplevel, {
+  radius = 10,
+  length = 10,
+  teethHeight = 10,
+  numDivisions = 64,
+  totalTwistDegrees = 40
+} = {}) => {
+  const { Manifold, CrossSection } = m;
+  
+  // calculate maximum tooth width based on twist angle
+  const circumference = 2 * Math.PI * radius;
+  const arcLength = (totalTwistDegrees / 360) * circumference;
+  // we want the tooth to be slightly less than the arc length to prevent overlap
+  // 0.8 is a safety factor - adjust as needed
+  const toothWidth = arcLength * 0.8;
 
-  const triVerts = new Uint32Array(triangles);
-  const vertProperties = new Float32Array(positions);
-  const scallop = new Mesh({ numProp: 3, triVerts, vertProperties });
+  // create base circle with tooth
+  const center = CrossSection.circle(radius);
+  const tooth = makeRectangle(m, {
+    width: toothWidth,
+    height: teethHeight
+  }).translate(-toothWidth/2, 0);
+  const baseSection = center.add(tooth);
 
-  const colorCurvature = (color: number[], pos: Vec3, oldProp: number[]) => {
-    const a = Math.max(0, Math.min(1, oldProp[0] / 3 + 0.5));
-    const b = a * a * (3 - 2 * a);
-    const red = [1, 0, 0];
-    const blue = [0, 0, 1];
-    for (let i = 0; i < 3; ++i) {
-      color[i] = (1 - b) * blue[i] + b * red[i];
-    }
-  };
-
-  const result = Manifold.smooth(scallop, sharpenedEdges)
-    .refine(n)
-    .calculateCurvature(-1, 0)
-    .setProperties(3, colorCurvature);
-
-  const node = new GLTFNode();
-  node.manifold = result;
-  node.material = {
-    baseColorFactor: [1, 1, 1],
-    metallic: 0,
-    attributes: ['COLOR_0']
-  };
-
-  return node;
-};
-
-```
-
-These are examples of parts
-```ts
-// This is a cube
-import { ManifoldToplevel } from '../manifold_lib//built/manifold';
-export const cube = (manifold: ManifoldToplevel) => {
-  const { cube } = manifold.Manifold;
-  return cube([10, 10, 10]);
+  // single extrude with twist
+  return baseSection.extrude(length, numDivisions, totalTwistDegrees);
 }
 ```
 
-```ts
-// This is a curved cone
-export const curvedCone = (
-    manifoldTop: any,
-    height: number,
-    baseRadius: number,
-    segments: number
-) => {
-  const { Manifold, CrossSection } = manifoldTop;
-  const points = Array.from({ length: segments + 1 }, (_, i) => {
-    const t = i / segments;
-    const r = baseRadius * (1 - t * t);
-    return [r, height * t];
-  });
+this way:
+- if totalTwistDegrees = 360°, the tooth width will be ~80% of the circumference divided by 1
+- if totalTwistDegrees = 720° (2 rotations), the tooth width will be ~40% of the circumference
+- if totalTwistDegrees = 180° (half rotation), the tooth width will be ~160% of the circumference divided by 1
 
-  points.unshift([0, 0]);
-  points.push([0, height]);
+the 0.8 safety factor prevents teeth from exactly touching - you can adjust this up or down depending on how close you want the teeth to get.
 
-  const profile = new CrossSection([points]);
-  return Manifold.revolve(profile);
-};
-```
-
-```ts
-// this is a curved cone at the end of a cylidnar, to make a leg
-import { curvedCone } from './curvedCone';
-
-export const pointedLeg = (manifoldTop: any, params: {
-  legRadius: number,
-  legHeight: number,
-  pointHeight: number,
-  curvatureSegments: number
-}) => {
-  const { Manifold } = manifoldTop;
-  const { legRadius, legHeight, pointHeight, curvatureSegments } = params;
-
-  const curvedConeShape = curvedCone(manifoldTop, pointHeight, legRadius, curvatureSegments);
-  const leg = Manifold.cylinder(legHeight, legRadius, legRadius, 32, false);
-  const curvedConePositioned = curvedConeShape.translate(0, 0, legHeight);
-
-  return Manifold.union(curvedConePositioned, leg);
-};
-```
-
-```ts
-// This is a quidditch hoop, that uses both the pointed legs
-// This has the hoop at the bottom, and the legs pointed up
-// The intention for this is to put in to help gude where plants grow, the direction they grow
-import { ManifoldToplevel } from '../manifold_lib//built/manifold';
-import { pointedLeg} from "./pointedLeg";
-
-
-export const quidditchHoop = (manifoldTop: any) => {
-  const { Manifold, CrossSection } = manifoldTop as ManifoldToplevel;
-
-  const legDistance = 50;
-  const legRadius = 3;
-  const legHeight = 100;
-  const pointHeight = 40;
-  const curvatureSegments = 10;
-
-  const ringOuterRadius = legDistance / 2 + legRadius;
-  const ringInnerRadius = legDistance / 2 - legRadius / 10;
-  const ringThickness = legRadius;
-
-
-  const innerRing = Manifold.cylinder(ringThickness, ringInnerRadius, ringInnerRadius, 64, false);
-
-  const createHalfLeg = () => {
-    const leg = pointedLeg(manifoldTop, {
-      legRadius,
-      legHeight,
-      pointHeight,
-      curvatureSegments
-    });
-    return leg.splitByPlane([0, 1, 0], 0)[0];
-  };
-
-  const createRing = () => {
-    const outerRing = Manifold.cylinder(ringThickness, ringOuterRadius, ringOuterRadius, 64, false);
-    return outerRing.subtract(innerRing).rotate(270, 0, 0);
-  };
-
-  const leftLeg = createHalfLeg().translate(-legDistance / 2, 0, 0).subtract(Manifold.cube());
-  const rightLeg = createHalfLeg().translate(legDistance / 2, 0, 0);
-  const ring = createRing();
-  return Manifold.union([
-    leftLeg,
-    rightLeg,
-    ring
-  ]).subtract(
-    innerRing.rotate(270, 0, 0)
-  );
-};
-```
-
-
-
-
-
-Library
-```ts
-// Triangulates polygons
-export function triangulate(polygons: Polygons, precision?: number): Vec3[];
-
-// Circular shape quantization defaults
-export function setMinCircularAngle(angle: number): void;
-export function setMinCircularEdgeLength(length: number): void;
-export function setCircularSegments(segments: number): void;
-export function getCircularSegments(radius: number): number;
-export function resetToCircularDefaults(): void;
-
-export class CrossSection {
-  constructor(polygons: Polygons, fillRule?: FillRule);
-  static square(size?: Vec2|number, center?: boolean): CrossSection;
-  static circle(radius: number, circularSegments?: number): CrossSection;
-  extrude(
-      height: number, nDivisions?: number, twistDegrees?: number,
-      scaleTop?: Vec2|number, center?: boolean): Manifold;
-  revolve(circularSegments?: number, revolveDegrees?: number): Manifold;
-  transform(m: Mat3): CrossSection;
-  translate(v: Vec2): CrossSection;
-  translate(x: number, y?: number): CrossSection;
-  rotate(v: number): CrossSection;
-  scale(v: Vec2|number): CrossSection;
-  mirror(v: Vec2): CrossSection;
-  warp(warpFunc: (vert: Vec2) => void): CrossSection;
-  offset(
-      delta: number, joinType?: JoinType, miterLimit?: number,
-      circularSegments?: number): CrossSection;
-  simplify(epsilon?: number): CrossSection;
-  add(other: CrossSection|Polygons): CrossSection;
-  subtract(other: CrossSection|Polygons): CrossSection;
-  intersect(other: CrossSection|Polygons): CrossSection;
-  static union(a: CrossSection|Polygons, b: CrossSection|Polygons): CrossSection;
-  static difference(a: CrossSection|Polygons, b: CrossSection|Polygons): CrossSection;
-  static intersection(a: CrossSection|Polygons, b: CrossSection|Polygons): CrossSection;
-  static union(polygons: (CrossSection|Polygons)[]): CrossSection;
-  static difference(polygons: (CrossSection|Polygons)[]): CrossSection;
-  static intersection(polygons: (CrossSection|Polygons)[]): CrossSection;
-  hull(): CrossSection;
-  static hull(polygons: (CrossSection|Polygons)[]): CrossSection;
-  static compose(polygons: (CrossSection|Polygons)[]): CrossSection;
-  decompose(): CrossSection[];
-  static ofPolygons(polygons: Polygons, fillRule?: FillRule): CrossSection;
-  toPolygons(): SimplePolygon[];
-  area(): number;
-  isEmpty(): boolean;
-  numVert(): number;
-  numContour(): number;
-  bounds(): Rect;
-  delete(): void;
-}
-
-export class Manifold {
-  constructor(mesh: Mesh);
-  static tetrahedron(): Manifold;
-  static cube(size?: Vec3|number, center?: boolean): Manifold;
-  static cylinder(
-      height: number, radiusLow: number, radiusHigh?: number,
-      circularSegments?: number, center?: boolean): Manifold;
-  static sphere(radius: number, circularSegments?: number): Manifold;
-  static extrude(
-      polygons: CrossSection|Polygons, height: number, nDivisions?: number,
-      twistDegrees?: number, scaleTop?: Vec2|number,
-      center?: boolean): Manifold;
-  static revolve(
-      polygons: CrossSection|Polygons, circularSegments?: number,
-      revolveDegrees?: number): Manifold;
-  static ofMesh(mesh: Mesh): Manifold;
-  static smooth(mesh: Mesh, sharpenedEdges?: Smoothness[]): Manifold;
-  static levelSet(
-      sdf: (point: Vec3) => number, bounds: Box, edgeLength: number,
-      level?: number): Manifold;
-  transform(m: Mat4): Manifold;
-  translate(v: Vec3): Manifold;
-  translate(x: number, y?: number, z?: number): Manifold;
-  rotate(v: Vec3): Manifold;
-  rotate(x: number, y?: number, z?: number): Manifold;
-  scale(v: Vec3|number): Manifold;
-  mirror(v: Vec3): Manifold;
-  warp(warpFunc: (vert: Vec3) => void): Manifold;
-  static smoothByNormals(normalIdx: number): Manifold;
-  static smoothOut(minSharpAngle?: number, minSmoothness?: number): Manifold;
-  refine(n: number): Manifold;
-  refineToLength(length: number): Manifold;
-  setProperties(
-      numProp: number,
-      propFunc: (newProp: number[], position: Vec3, oldProp: number[]) => void):
-      Manifold;
-  calculateCurvature(gaussianIdx: number, meanIdx: number): Manifold;
-  calculateNormals(normalIdx: number, minSharpAngle: number): Manifold;
-  add(other: Manifold): Manifold;
-  subtract(other: Manifold): Manifold;
-  intersect(other: Manifold): Manifold;
-  static union(a: Manifold, b: Manifold): Manifold;
-  static difference(a: Manifold, b: Manifold): Manifold;
-  static intersection(a: Manifold, b: Manifold): Manifold;
-  static union(manifolds: Manifold[]): Manifold;
-  static difference(manifolds: Manifold[]): Manifold;
-  static intersection(manifolds: Manifold[]): Manifold;
-  split(cutter: Manifold): Manifold[];
-  splitByPlane(normal: Vec3, originOffset: number): Manifold[];
-  trimByPlane(normal: Vec3, originOffset: number): Manifold;
-  slice(height: number): CrossSection;
-  project(): CrossSection;
-  hull(): Manifold;
-  static hull(points: (Manifold|Vec3)[]): Manifold;
-  static compose(manifolds: Manifold[]): Manifold;
-  decompose(): Manifold[];
-  isEmpty(): boolean;
-  numVert(): number;
-  numTri(): number;
-  numEdge(): number;
-  numProp(): number;
-  numPropVert(): number;
-  boundingBox(): Box;
-  precision(): number;
-  genus(): number;
-  getProperties(): Properties;
-  minGap(other: Manifold, searchLength: number): number;
-}
-```
-
-# Examples
-This is an example of a main assembly
-```ts
-import { ManifoldToplevel, Vec3, Vec2, Polygons, SimplePolygon } from './manifold_lib/built/manifold';
-import { GLTFNode } from './manifold_lib/worker';
-
-export const mainAssembly = (manifoldTop: any) => {
-  const { Manifold, Mesh } = manifoldTop as ManifoldToplevel;
-
-  const height = 10;
-  const radius = 30;
-  const offset = 20;
-  const wiggles = 12;
-  const sharpness = 0.8;
-  const n = 50;
-
-  const positions: number[] = [];
-  const triangles: number[] = [];
-  positions.push(-offset, 0, height, -offset, 0, -height);
-  const sharpenedEdges: { halfedge: number; smoothness: number }[] = [];
-
-  const delta = Math.PI / wiggles;
-  for (let i = 0; i < 2 * wiggles; ++i) {
-    const theta = (i - wiggles) * delta;
-    const amp = 0.5 * height * Math.max(Math.cos(0.8 * theta), 0);
-
-    positions.push(
-      radius * Math.cos(theta),
-      radius * Math.sin(theta),
-      amp * (i % 2 == 0 ? 1 : -1)
-    );
-    let j = i + 1;
-    if (j == 2 * wiggles) j = 0;
-
-    const smoothness = 1 - sharpness * Math.cos((theta + delta / 2) / 2);
-    let halfedge = triangles.length + 1;
-    sharpenedEdges.push({ halfedge, smoothness });
-    triangles.push(0, 2 + i, 2 + j);
-
-    halfedge = triangles.length + 1;
-    sharpenedEdges.push({ halfedge, smoothness });
-    triangles.push(1, 2 + j, 2 + i);
-  }
-
-  const triVerts = new Uint32Array(triangles);
-  const vertProperties = new Float32Array(positions);
-  const scallop = new Mesh({ numProp: 3, triVerts, vertProperties });
-
-  const colorCurvature = (color: number[], pos: Vec3, oldProp: number[]) => {
-    const a = Math.max(0, Math.min(1, oldProp[0] / 3 + 0.5));
-    const b = a * a * (3 - 2 * a);
-    const red = [1, 0, 0];
-    const blue = [0, 0, 1];
-    for (let i = 0; i < 3; ++i) {
-      color[i] = (1 - b) * blue[i] + b * red[i];
-    }
-  };
-
-  const result = Manifold.smooth(scallop, sharpenedEdges)
-    .refine(n)
-    .calculateCurvature(-1, 0)
-    .setProperties(3, colorCurvature);
-
-  const node = new GLTFNode();
-  node.manifold = result;
-  node.material = {
-    baseColorFactor: [1, 1, 1],
-    metallic: 0,
-    attributes: ['COLOR_0']
-  };
-
-  return node;
-};
-
-```
-
-These are examples of parts
-```ts
-// This is a cube
-import { ManifoldToplevel } from '../manifold_lib//built/manifold';
-export const cube = (manifold: ManifoldToplevel) => {
-  const { cube } = manifold.Manifold;
-  return cube([10, 10, 10]);
-}
-```
-
-```ts
-// This is a curved cone
-export const curvedCone = (
-    manifoldTop: any,
-    height: number,
-    baseRadius: number,
-    segments: number
-) => {
-  const { Manifold, CrossSection } = manifoldTop;
-  const points = Array.from({ length: segments + 1 }, (_, i) => {
-    const t = i / segments;
-    const r = baseRadius * (1 - t * t);
-    return [r, height * t];
-  });
-
-  points.unshift([0, 0]);
-  points.push([0, height]);
-
-  const profile = new CrossSection([points]);
-  return Manifold.revolve(profile);
-};
-```
-
+:

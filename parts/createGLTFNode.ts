@@ -1,9 +1,16 @@
-import { Manifold } from '../manifold_lib/built/manifold';
+import { Manifold, CrossSection } from '../manifold_lib/built/manifold';
 import { GLTFNode } from '../manifold_lib/worker';
+import { color } from './colorgradient';
 
-export const createNode = (shape: Manifold): GLTFNode => {
+export const createNode = (shape: Manifold | CrossSection): GLTFNode => {
   const node = new GLTFNode();
-  node.manifold = shape;
+
+  if ('extrude' in shape) {
+    node.manifold = color(shape.extrude(0.1));
+  } else {
+    node.manifold = shape;
+  }
+
   node.material = {
     baseColorFactor: [1, 1, 1],
     metallic: 0.5,

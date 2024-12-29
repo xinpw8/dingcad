@@ -1,4 +1,4 @@
-import { ManifoldToplevel, Vec3, Manifold } from '../manifold_lib/built/manifold';
+import { Vec3, Manifold } from '../manifold_lib/built/manifold';
 export const color = (shape: Manifold, dimensions?: Vec3): Manifold => {
   const [width, height, depth] = dimensions || [1, 1, 1];
   

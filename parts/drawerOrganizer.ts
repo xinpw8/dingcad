@@ -1,6 +1,5 @@
-import { ManifoldToplevel, Vec3, Vec2, Manifold, CrossSection } from './manifold_lib/built/manifold';
-import { color , green, blue } from './parts/colorgradient';
-import { createNode } from './parts/createGLTFNode';
+import { ManifoldToplevel } from '../manifold_lib/built/manifold';
+import { color } from '../parts/colorgradient';
 
 export const mainAssembly = (m: ManifoldToplevel) => {
   const { Manifold, CrossSection } = m;
@@ -32,8 +31,3 @@ export const mainAssembly = (m: ManifoldToplevel) => {
   return connector
     .add(color(wall.translate(-50, -50).extrude(96)))
 };
-
-// 320 = n * 2 + 8
-// 160 = n + 8
-// n = 160 - 8 = 160-8=16
-//
