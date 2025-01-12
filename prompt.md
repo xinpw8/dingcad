@@ -1007,74 +1007,442 @@ export class Mesh {
   tangent(halfedge: number): SealedFloat32Array<4>;
   transform(run: number): Mat4;
 }
+
+This is main assembly.
+There are some rules
+You can not return a model without applying a color onto it
+You cannot apply a color onto a cross section. You must return something 3d
+You must always return a manifold
+You must always export const mainAssembly, this is what is used
+
 ```
 
+```ts
+import { ManifoldToplevel, Vec2, Manifold } from '../manifold_lib/built/manifold';
+import { color, blue } from './colorgradient';
 
-const makeWorm = (m: ManifoldToplevel, {
-  radius = 10,
-  length = 10,
-  teethHeight = 10,
-  numDivisions = 64,
-  totalTwistDegrees = 40,
-  toothLength = 25 
-} = {}) => {
-  const { Manifold, CrossSection } = m;
-  
-  // create base circle with tooth
-  const center = CrossSection.circle(radius);
-  const tooth = makeRectangle(m, {
-    width: toothLength, 
-    height: teethHeight
-  }).translate(-length/2, 0);
-  const baseSection = center.add(tooth);
+// Constants for the design (all in mm)
+const MAGNET_DIAMETER = 6.04;
+const MAGNET_HEIGHT = 3;
+const MAGNET_DROP = .8;
 
-  // single extrude with twist
-  return baseSection.extrude(length, numDivisions, totalTwistDegrees);
-}
+const INCH_TO_MM = 25.4;
+const FAN_DIAMETER = 4 * INCH_TO_MM - 4;
+const WALL_THICKNESS = 2;
+const INTERFACE_HEIGHT = 4;
+const NUM_MAGNETS = 8;
+const LIP_DIAMETER = FAN_DIAMETER + 15;
 
-Can i change this guy to figure out what is required to make the tooth width?
+const VERTICAL_HEIGHT = 30;
+const CLEARANCE = 0.4;
 
-it's dynamic basied on the twist degrees. like if i give it 360 itll end up being less thick 
+const createFanInterface = (m: ManifoldToplevel) => {
+  const lipCylinder = m.Manifold.cylinder(
+    INTERFACE_HEIGHT,
+    LIP_DIAMETER/2,
+    LIP_DIAMETER/2,
+    64,
+    false
+  );
+  const mainCylinder = m.Manifold.cylinder(
+    INTERFACE_HEIGHT,
+    FAN_DIAMETER/2-2,
+    FAN_DIAMETER/2-2,
+    64,
+    false
+  );
+  const base = lipCylinder.subtract(mainCylinder);
+  let magnetHoles = [];
+  const magnetRadius = FAN_DIAMETER/2 + (LIP_DIAMETER - FAN_DIAMETER)/4;
 
-ah, i get what you're trying to do. you want the tooth width to automatically adjust so that as it twists, the teeth don't overlap. let's work out the math:
+  for (let i = 0; i < NUM_MAGNETS; i++) {
+    const angle = (i * 2 * Math.PI) / NUM_MAGNETS;
+    const magnetHole = m.Manifold.cylinder(
+      MAGNET_HEIGHT,
+      MAGNET_DIAMETER/2,
+      MAGNET_DIAMETER/2,
+      32,
+      false
+    ).translate([
+      magnetRadius * Math.cos(angle),
+      magnetRadius * Math.sin(angle),
+      INTERFACE_HEIGHT - MAGNET_HEIGHT - MAGNET_DROP
+    ]);
+    magnetHoles.push(magnetHole);
+  }
 
-for a full rotation (360°), the circumference is 2πr. for any given twist angle θ, the arc length that one tooth travels is:
+  return base.subtract(m.Manifold.union(magnetHoles));
+};
 
-```typescript
-const makeWorm = (m: ManifoldToplevel, {
-  radius = 10,
-  length = 10,
-  teethHeight = 10,
-  numDivisions = 64,
-  totalTwistDegrees = 40
-} = {}) => {
-  const { Manifold, CrossSection } = m;
-  
-  // calculate maximum tooth width based on twist angle
-  const circumference = 2 * Math.PI * radius;
-  const arcLength = (totalTwistDegrees / 360) * circumference;
-  // we want the tooth to be slightly less than the arc length to prevent overlap
-  // 0.8 is a safety factor - adjust as needed
-  const toothWidth = arcLength * 0.8;
+const createVerticalPipe = (m: ManifoldToplevel) => {
+    const radius = (FAN_DIAMETER/2) - CLEARANCE;
+    const outer = m.Manifold.cylinder(VERTICAL_HEIGHT, radius, radius, 32, false);
+    const innerRadius = radius - WALL_THICKNESS;
+    const inner = m.Manifold.cylinder(VERTICAL_HEIGHT, innerRadius, innerRadius, 32, false);
+    return outer.subtract(inner);
+};
 
-  // create base circle with tooth
-  const center = CrossSection.circle(radius);
-  const tooth = makeRectangle(m, {
-    width: toothWidth,
-    height: teethHeight
-  }).translate(-toothWidth/2, 0);
-  const baseSection = center.add(tooth);
+export const mainAssembly = (m: ManifoldToplevel) => {
+    const pipe = createVerticalPipe(m);
+    const fanInterface = createFanInterface(m);
+    const combined = m.Manifold.union([
+        pipe,
+        fanInterface
+    ]);
 
-  // single extrude with twist
-  return baseSection.extrude(length, numDivisions, totalTwistDegrees);
-}
+    return blue(combined);
+};
 ```
 
-this way:
-- if totalTwistDegrees = 360°, the tooth width will be ~80% of the circumference divided by 1
-- if totalTwistDegrees = 720° (2 rotations), the tooth width will be ~40% of the circumference
-- if totalTwistDegrees = 180° (half rotation), the tooth width will be ~160% of the circumference divided by 1
+can you use cylinders that kind of change in shape to make it a crush rib on the outside
 
-the 0.8 safety factor prevents teeth from exactly touching - you can adjust this up or down depending on how close you want the teeth to get.
+place the cylinders vertically around the vertical pipe on the outerb it
 
-:
+Here's a modified version that adds crush ribs around the vertical pipe:
+
+```ts
+import { ManifoldToplevel, Vec2, Manifold } from '../manifold_lib/built/manifold';
+import { color, blue } from './colorgradient';
+
+// Constants for the design (all in mm)
+const MAGNET_DIAMETER = 6.04;
+const MAGNET_HEIGHT = 3;
+const MAGNET_DROP = .8;
+
+const INCH_TO_MM = 25.4;
+const FAN_DIAMETER = 4 * INCH_TO_MM - 4;
+const WALL_THICKNESS = 2;
+const INTERFACE_HEIGHT = 4;
+const NUM_MAGNETS = 8;
+const LIP_DIAMETER = FAN_DIAMETER + 15;
+
+const VERTICAL_HEIGHT = 30;
+const CLEARANCE = 0.4;
+
+// Crush rib constants
+const NUM_RIBS = 12;
+const RIB_HEIGHT = VERTICAL_HEIGHT - 2; // Slightly shorter than pipe
+const RIB_WIDTH = 2;
+const RIB_TAPER = 1; // How much the rib tapers at the top
+const RIB_PROTRUSION = 1.5; // How far the rib sticks out
+
+const createFanInterface = (m: ManifoldToplevel) => {
+  const lipCylinder = m.Manifold.cylinder(
+    INTERFACE_HEIGHT,
+    LIP_DIAMETER/2,
+    LIP_DIAMETER/2,
+    64,
+    false
+  );
+  const mainCylinder = m.Manifold.cylinder(
+    INTERFACE_HEIGHT,
+    FAN_DIAMETER/2-2,
+    FAN_DIAMETER/2-2,
+    64,
+    false
+  );
+  const base = lipCylinder.subtract(mainCylinder);
+  let magnetHoles = [];
+  const magnetRadius = FAN_DIAMETER/2 + (LIP_DIAMETER - FAN_DIAMETER)/4;
+
+  for (let i = 0; i < NUM_MAGNETS; i++) {
+    const angle = (i * 2 * Math.PI) / NUM_MAGNETS;
+    const magnetHole = m.Manifold.cylinder(
+      MAGNET_HEIGHT,
+      MAGNET_DIAMETER/2,
+      MAGNET_DIAMETER/2,
+      32,
+      false
+    ).translate([
+      magnetRadius * Math.cos(angle),
+      magnetRadius * Math.sin(angle),
+      INTERFACE_HEIGHT - MAGNET_HEIGHT - MAGNET_DROP
+    ]);
+    magnetHoles.push(magnetHole);
+  }
+
+  return base.subtract(m.Manifold.union(magnetHoles));
+};
+
+const createVerticalPipe = (m: ManifoldToplevel) => {
+    const radius = (FAN_DIAMETER/2) - CLEARANCE;
+    const outer = m.Manifold.cylinder(VERTICAL_HEIGHT, radius, radius, 32, false);
+    const innerRadius = radius - WALL_THICKNESS;
+    const inner = m.Manifold.cylinder(VERTICAL_HEIGHT, innerRadius, innerRadius, 32, false);
+    
+    // Create crush ribs
+    let ribs = [];
+    for (let i = 0; i < NUM_RIBS; i++) {
+        const angle = (i * 2 * Math.PI) / NUM_RIBS;
+        const rib = m.Manifold.cylinder(
+            RIB_HEIGHT,
+            RIB_WIDTH/2, // Bottom width
+            RIB_WIDTH/2 - RIB_TAPER/2, // Top width (tapered)
+            4 // Low poly count since it's a small feature
+        ).translate([
+            (radius + RIB_PROTRUSION/2) * Math.cos(angle),
+            (radius + RIB_PROTRUSION/2) * Math.sin(angle),
+            1 // Start slightly above bottom
+        ]);
+        ribs.push(rib);
+    }
+
+    // Combine pipe with ribs
+    return m.Manifold.union([
+        outer.subtract(inner),
+        ...ribs
+    ]);
+};
+
+export const mainAssembly = (m: ManifoldToplevel) => {
+    const pipe = createVerticalPipe(m);
+    const fanInterface = createFanInterface(m);
+    const combined = m.Manifold.union([
+        pipe,
+        fanInterface
+    ]);
+
+    return blue(combined);
+};
+```
+
+This version adds vertical crush ribs around the outside of the pipe. The ribs:
+- Are tapered (wider at bottom, narrower at top) to help with insertion
+- Are slightly shorter than the pipe height
+- Start slightly above the bottom
+- Are evenly distributed around the circumference
+- Protrude outward from the pipe surface
+
+You can adjust the constants at the top to modify:
+- Number of ribs (NUM_RIBS)
+- How much they stick out (RIB_PROTRUSION) 
+- How much they taper (RIB_TAPER)
+- Their width (RIB_WIDTH)
+- Their height (RIB_HEIGHT)
+
+ive kinda fudged it to make it better
+
+
+import { ManifoldToplevel, Vec2, Manifold } from '../manifold_lib/built/manifold';
+import { color, blue } from './colorgradient';
+const MAGNET_DIAMETER = 6.04;
+const MAGNET_HEIGHT = 3;
+const MAGNET_DROP = .8;
+
+const INCH_TO_MM = 25.4;
+const FAN_DIAMETER = 4 * INCH_TO_MM - 4;
+const WALL_THICKNESS = 2;
+const INTERFACE_HEIGHT = 4;
+const NUM_MAGNETS = 8;
+const LIP_DIAMETER = FAN_DIAMETER + 15;
+
+const VERTICAL_HEIGHT = 30;
+const CLEARANCE = 0.4;
+const NUM_RIBS = 12;
+const RIB_HEIGHT = VERTICAL_HEIGHT - 2; // Slightly shorter than pipe
+const RIB_WIDTH = 4;
+const RIB_TAPER = 3; // How much the rib tapers at the top
+const RIB_PROTRUSION = -1.3; // How far the rib sticks out
+
+const createFanInterface = (m: ManifoldToplevel) => {
+  const lipCylinder = m.Manifold.cylinder(
+    INTERFACE_HEIGHT,
+    LIP_DIAMETER/2,
+    LIP_DIAMETER/2,
+    64,
+    false
+  );
+  const mainCylinder = m.Manifold.cylinder(
+    INTERFACE_HEIGHT,
+    FAN_DIAMETER/2-2,
+    FAN_DIAMETER/2-2,
+    64,
+    false
+  );
+  const base = lipCylinder.subtract(mainCylinder);
+  let magnetHoles = [];
+  const magnetRadius = FAN_DIAMETER/2 + (LIP_DIAMETER - FAN_DIAMETER)/4;
+
+  for (let i = 0; i < NUM_MAGNETS; i++) {
+    const angle = (i * 2 * Math.PI) / NUM_MAGNETS;
+    const magnetHole = m.Manifold.cylinder(
+      MAGNET_HEIGHT,
+      MAGNET_DIAMETER/2,
+      MAGNET_DIAMETER/2,
+      32,
+      false
+    ).translate([
+      magnetRadius * Math.cos(angle),
+      magnetRadius * Math.sin(angle),
+      INTERFACE_HEIGHT - MAGNET_HEIGHT - MAGNET_DROP
+    ]);
+    magnetHoles.push(magnetHole);
+  }
+
+  return base.subtract(m.Manifold.union(magnetHoles));
+};
+
+const createVerticalPipe = (m: ManifoldToplevel) => {
+    const radius = (FAN_DIAMETER/2) - CLEARANCE;
+    const outer = m.Manifold.cylinder(VERTICAL_HEIGHT, radius, radius, 32, false);
+    const innerRadius = radius - WALL_THICKNESS;
+    const inner = m.Manifold.cylinder(VERTICAL_HEIGHT, innerRadius, innerRadius, 32, false);
+    
+    // Create crush ribs
+    let ribs = [];
+    for (let i = 0; i < NUM_RIBS; i++) {
+        const angle = (i * 2 * Math.PI) / NUM_RIBS;
+        const rib = m.Manifold.cylinder(
+            RIB_HEIGHT,
+            RIB_WIDTH/2, // Bottom width
+            RIB_WIDTH/2 - RIB_TAPER/2, // Top width (tapered)
+            32// Low poly count since it's a small feature
+        ).translate([
+            (radius + RIB_PROTRUSION/2) * Math.cos(angle),
+            (radius + RIB_PROTRUSION/2) * Math.sin(angle),
+            1 // Start slightly above bottom
+        ]);
+        ribs.push(rib);
+    }
+
+    // Combine pipe with ribs
+    return m.Manifold.union([
+        outer.subtract(inner),
+        ...ribs
+    ]);
+};
+
+export const mainAssembly = (m: ManifoldToplevel) => {
+    const pipe = createVerticalPipe(m);
+    const fanInterface = createFanInterface(m);
+    const combined = m.Manifold.union([
+        pipe,
+        fanInterface
+    ]);
+
+    return blue(combined);
+};
+
+but now the ribs are coming out the middle of the cylinder
+
+i guess can we like
+
+split each cylinder down the lahf so like itso nly poking out the outside. i want to make the cylinder cone thing like a half 
+
+I'll modify the ribs to be half-cylinders that only protrude from the outer surface. Here's the updated code:
+
+```ts
+import { ManifoldToplevel, Vec2, Manifold } from '../manifold_lib/built/manifold';
+import { color, blue } from './colorgradient';
+
+const MAGNET_DIAMETER = 6.04;
+const MAGNET_HEIGHT = 3;
+const MAGNET_DROP = .8;
+
+const INCH_TO_MM = 25.4;
+const FAN_DIAMETER = 4 * INCH_TO_MM - 4;
+const WALL_THICKNESS = 2;
+const INTERFACE_HEIGHT = 4;
+const NUM_MAGNETS = 8;
+const LIP_DIAMETER = FAN_DIAMETER + 15;
+
+const VERTICAL_HEIGHT = 30;
+const CLEARANCE = 0.4;
+const NUM_RIBS = 12;
+const RIB_HEIGHT = VERTICAL_HEIGHT - 2;
+const RIB_WIDTH = 4;
+const RIB_TAPER = 3; // How much the rib tapers at the top
+const RIB_PROTRUSION = -1.3; // How far the rib sticks out
+
+const createFanInterface = (m: ManifoldToplevel) => {
+  const lipCylinder = m.Manifold.cylinder(
+    INTERFACE_HEIGHT,
+    LIP_DIAMETER/2,
+    LIP_DIAMETER/2,
+    64,
+    false
+  );
+  const mainCylinder = m.Manifold.cylinder(
+    INTERFACE_HEIGHT,
+    FAN_DIAMETER/2-2,
+    FAN_DIAMETER/2-2,
+    64,
+    false
+  );
+  const base = lipCylinder.subtract(mainCylinder);
+  let magnetHoles = [];
+  const magnetRadius = FAN_DIAMETER/2 + (LIP_DIAMETER - FAN_DIAMETER)/4;
+
+  for (let i = 0; i < NUM_MAGNETS; i++) {
+    const angle = (i * 2 * Math.PI) / NUM_MAGNETS;
+    const magnetHole = m.Manifold.cylinder(
+      MAGNET_HEIGHT,
+      MAGNET_DIAMETER/2,
+      MAGNET_DIAMETER/2,
+      32,
+      false
+    ).translate([
+      magnetRadius * Math.cos(angle),
+      magnetRadius * Math.sin(angle),
+      INTERFACE_HEIGHT - MAGNET_HEIGHT - MAGNET_DROP
+    ]);
+    magnetHoles.push(magnetHole);
+  }
+
+  return base.subtract(m.Manifold.union(magnetHoles));
+};
+
+const createVerticalPipe = (m: ManifoldToplevel) => {
+    const radius = (FAN_DIAMETER/2) - CLEARANCE;
+    const outer = m.Manifold.cylinder(VERTICAL_HEIGHT, radius, radius, 32, false);
+    const innerRadius = radius - WALL_THICKNESS;
+    const inner = m.Manifold.cylinder(VERTICAL_HEIGHT, innerRadius, innerRadius, 32, false);
+    let ribs = [];
+    for (let i = 0; i < NUM_RIBS; i++) {
+        const angle = (i * 2 * Math.PI) / NUM_RIBS;
+        const fullRib = m.Manifold.cylinder(
+            RIB_HEIGHT,
+            RIB_WIDTH/2,
+            RIB_WIDTH/2 - RIB_TAPER/2,
+            32
+        );
+
+        // Create cutting plane to make half cylinder
+        const cutter = m.Manifold.cube([RIB_WIDTH*2, RIB_WIDTH*2, RIB_HEIGHT])
+            .translate([-RIB_WIDTH*2, -RIB_WIDTH, 0]); // Move cutter back instead of left
+
+        // Cut cylinder in half and position it
+        const positioned = fullRib
+            .subtract(cutter)
+            // First rotate to proper angle around pipe
+            .rotate([0, 0, angle * 180/Math.PI])
+            // Then translate out to pipe surface
+            .translate([
+                (radius + RIB_PROTRUSION/2) * Math.cos(angle),
+                (radius + RIB_PROTRUSION/2) * Math.sin(angle),
+                1
+            ]);
+
+        ribs.push(positioned);
+    }
+
+    // Combine pipe with ribs
+    return m.Manifold.union([
+        outer.subtract(inner),
+        ...ribs
+    ]);
+};
+
+export const mainAssembly = (m: ManifoldToplevel) => {
+    const pipe = createVerticalPipe(m);
+    const fanInterface = createFanInterface(m);
+    const combined = m.Manifold.union([
+        pipe,
+        fanInterface
+    ]);
+
+    return blue(combined);
+};
+```
+
+can you make it so that the top of the vertical 

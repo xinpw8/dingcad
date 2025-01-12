@@ -21,8 +21,6 @@ export const green = (shape: Manifold): Manifold => {
     const tx = (pos[0] + width/2) / width;
     const ty = (pos[1] + height/2) / height;
     const tz = (pos[2] + depth/2) / depth;
-    
-    // bias towards green
     color[0] = 0.2 + 0.3 * tx; // red component
     color[1] = 0.5 + 0.5 * ty; // green component
     color[2] = 0.2 + 0.3 * tz; // blue component
@@ -33,13 +31,10 @@ export const green = (shape: Manifold): Manifold => {
 
 export const blue = (shape: Manifold): Manifold => {
   const [width, height, depth] = [100, 100, 100];
-  
   const bluishGradient = (color: number[], pos: Vec3) => {
     const tx = (pos[0] + width/2) / width;
     const ty = (pos[1] + height/2) / height;
     const tz = (pos[2] + depth/2) / depth;
-    
-    // bias towards blue
     color[0] = 0.2 + 0.3 * tx; // red component
     color[1] = 0.2 + 0.3 * ty; // green component
     color[2] = 0.5 + 0.5 * tz; // blue component
@@ -47,3 +42,19 @@ export const blue = (shape: Manifold): Manifold => {
 
   return shape.setProperties(3, bluishGradient);
 };
+
+export const red = (shape: Manifold): Manifold => {
+  const [width, height, depth] = [100, 100, 100];
+  
+  const redishGradient = (color: number[], pos: Vec3) => {
+    const tx = (pos[0] + width/2) / width;
+    const ty = (pos[1] + height/2) / height;
+    const tz = (pos[2] + depth/2) / depth;
+    color[0] = 0.5 + 0.5 * tx; // red component
+    color[1] = 0.2 + 0.3 * ty; // green component
+    color[2] = 0.2 + 0.3 * tz; // blue component
+  };
+
+  return shape.setProperties(3, redishGradient);
+};
+
