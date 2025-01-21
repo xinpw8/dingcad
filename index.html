@@ -7,42 +7,35 @@
     <style>
         body {
             margin: 0;
+            display: flex;
+            overflow: hidden;
         }
 
         canvas {
             display: block;
+            flex-grow: 1;
         }
 
-        #editor-container {
-            display: none;
-            /* Hidden by default */
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
+        #editor-panel {
+            width: 30%;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 100;
+            background: #1e1e1e;
+            border-left: 1px solid #333;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            color: white;
         }
 
         #editor {
-            width: 80vw;
-            height: 80vh;
-            margin: auto;
-            position: absolute;
-            top: 10%;
-            left: 10%;
-            background: #1e1e1e;
-            border-radius: 8px;
-            overflow: hidden;
+            flex-grow: 1;
+            margin-top: 10px;
         }
 
-        #toggle-editor {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            z-index: 101;
-            padding: 10px 15px;
+        #submit-code {
+            margin-top: 10px;
+            padding: 10px;
             background: #007acc;
             color: white;
             border: none;
@@ -50,7 +43,7 @@
             cursor: pointer;
         }
 
-        #toggle-editor:hover {
+        #submit-code:hover {
             background: #005fa3;
         }
     </style>
@@ -62,93 +55,55 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/loader.min.js"></script>
 
-    <!-- Button to toggle the editor -->
-    <button id="toggle-editor">Edit Code</button>
-
-    <!-- Editor container -->
-    <div id="editor-container">
+    <!-- Editor Panel -->
+    <div id="editor-panel">
+        <h3>Edit Code</h3>
         <div id="editor"></div>
+        <button id="submit-code">Submit</button>
     </div>
 
     <script>
         let camera, scene, renderer, controls, loader, model;
-        let cube, animationId;
-        let isCameraManual = false;
-        let editorVisible = false;
 
         init();
-        setupWebSocket();
-
-        // Function to toggle the editor
-        const toggleEditor = () => {
-            const editorContainer = document.getElementById('editor-container');
-            editorVisible = !editorVisible;
-            editorContainer.style.display = editorVisible ? 'block' : 'none';
-        };
-
-        document.getElementById('toggle-editor').addEventListener('click', toggleEditor);
 
         // Load Monaco Editor
         require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs' } });
         require(['vs/editor/editor.main'], function () {
             const editor = monaco.editor.create(document.getElementById('editor'), {
-                value: `
-    import { ManifoldToplevel, Manifold } from '../manifold_lib/built/manifold';
-    import { color, blue } from './colorgradient';
-    
-    const createTableTop = (m: ManifoldToplevel, width: number, depth: number, thickness: number) => {
-        return m.Manifold.cube([width, depth, thickness]);
-    };
-    
-    const createLeg = (m: ManifoldToplevel, height: number, width: number, taper: number) => {
-        const topWidth = width;
-        const bottomWidth = width - taper;
-        return m.Manifold.cylinder(height, topWidth / 2, bottomWidth / 2, 4);
-    };
-    
-    export const mainAssembly = (m: ManifoldToplevel) => {
-        const TABLE_WIDTH = 120;
-        const TABLE_DEPTH = 80;
-        const TABLE_HEIGHT = 75;
-        const TOP_THICKNESS = 4;
-        const LEG_WIDTH = 8;
-        const LEG_TAPER = 2;
-    
-        const top = createTableTop(m, TABLE_WIDTH, TABLE_DEPTH, TOP_THICKNESS).translate([
-            -TABLE_WIDTH / 2,
-            -TABLE_DEPTH / 2,
-            TABLE_HEIGHT - TOP_THICKNESS / 2
-        ]);
-    
-        const leg = createLeg(m, TABLE_HEIGHT, LEG_WIDTH, LEG_TAPER);
-        const INSET = 10;
-    
-        const leg1 = leg.translate([TABLE_WIDTH / 2 - INSET, TABLE_DEPTH / 2 - INSET, 0]);
-        const leg2 = leg.translate([-(TABLE_WIDTH / 2 - INSET), TABLE_DEPTH / 2 - INSET, 0]);
-        const leg3 = leg.translate([-(TABLE_WIDTH / 2 - INSET), -(TABLE_DEPTH / 2 - INSET), 0]);
-        const leg4 = leg.translate([TABLE_WIDTH / 2 - INSET, -(TABLE_DEPTH / 2 - INSET), 0]);
-    
-        const table = m.Manifold.union([top, leg1, leg2, leg3, leg4]);
-    
-        return blue(table);
-    };
-                `,
+                value: `import { ManifoldToplevel, Manifold } from '../manifold_lib/built/manifold';
+import { color, blue } from './colorgradient';
+
+const createTableTop = (m: ManifoldToplevel, width: number, depth: number, thickness: number) => {
+    return m.Manifold.cube([width, depth, thickness]);
+};
+
+export const mainAssembly = (m: ManifoldToplevel) => {
+    const TABLE_WIDTH = 120;
+    const TABLE_DEPTH = 80;
+    const TABLE_HEIGHT = 75;
+    const TOP_THICKNESS = 4;
+    const LEG_WIDTH = 8;
+
+    const top = createTableTop(m, TABLE_WIDTH, TABLE_DEPTH, TOP_THICKNESS)
+        .translate([0, 0, TABLE_HEIGHT - TOP_THICKNESS / 2]);
+
+    return blue(top);
+};`,
                 language: 'typescript',
                 theme: 'vs-dark',
             });
 
-            // Update and execute code when the editor is closed
-            document.getElementById('toggle-editor').addEventListener('click', async () => {
-                if (!editorVisible) {
-                    const updatedCode = editor.getValue();
+            // Handle "Submit" button click
+            document.getElementById('submit-code').addEventListener('click', async () => {
+                const updatedCode = editor.getValue();
 
-                    try {
-                        // Dynamically transpile and execute TypeScript code
-                        const transpiledCode = await transpileTypeScript(updatedCode);
-                        eval(transpiledCode); // Caution: Use sandboxing in production
-                    } catch (error) {
-                        console.error('Error executing user code:', error);
-                    }
+                try {
+                    // Transpile and execute the code
+                    const transpiledCode = await transpileTypeScript(updatedCode);
+                    eval(transpiledCode); // Note: Sandbox this for production
+                } catch (error) {
+                    console.error('Error executing user code:', error);
                 }
             });
 
@@ -197,27 +152,10 @@
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.addEventListener('change', () => {
                 render();
-                isCameraManual = true;
             });
-            controls.zoomSpeed = 0.5;
-            controls.minDistance = 0;
-            controls.maxDistance = Infinity;
-            controls.update();
-
-            window.addEventListener('resize', onWindowResize);
 
             loader = new THREE.GLTFLoader();
             loadModel();
-        }
-
-        function setupWebSocket() {
-            const socket = new WebSocket('ws://localhost:3000');
-            socket.onmessage = function (event) {
-                if (event.data === 'update') {
-                    console.log('Model update detected. Reloading...');
-                    loadModel();
-                }
-            };
         }
 
         function createCustomGrid() {
@@ -226,37 +164,12 @@
         }
 
         function loadModel() {
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-            }
             loader.load('out.glb', function (gltf) {
                 if (model) scene.remove(model);
                 model = gltf.scene;
                 scene.add(model);
-                if (!isCameraManual) {
-                    adjustCamera(model);
-                }
                 render();
-            }, undefined, function (error) {
-                console.error('An error happened', error);
             });
-        }
-
-        function adjustCamera(model) {
-            const box = new THREE.Box3().setFromObject(model);
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-            camera.position.set(0.12, 0.10, 0.17);
-            camera.rotation.set(-0.49, 0.53, 0.26);
-            controls.target.copy(center);
-            controls.update();
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            render();
         }
 
         function render() {
