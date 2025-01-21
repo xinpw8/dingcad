@@ -1,0 +1,28 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "api/server.cjs",
+            "use": "@vercel/node"
+        },
+        {
+            "src": "out.glb",
+            "use": "@vercel/static"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/save",
+            "methods": ["POST"],
+            "dest": "/api/server.cjs"
+        },
+        {
+            "src": "/out.glb",
+            "dest": "/out.glb"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/api/server.cjs"
+        }
+    ]
+}

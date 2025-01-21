@@ -24,15 +24,20 @@ const defaults = {
 };
 
 async function runAndSave(fn: any) {
+  console.log("Starting model generation...");
   const gltfNode = createNode(fn(manifoldModule));
+  console.log("Created node...");
   const result = await exportModels(defaults as any, gltfNode.manifold);
+  console.log("Exported model...");
 
   if (result) {
     const response = await fetch(result.glbURL);
     const buffer = await response.arrayBuffer();
     const outputPath = path.join('./', `out.glb`);
     fs.writeFileSync(outputPath, Buffer.from(buffer));
-    console.log(`out.glb updated ${outputPath}`);
+    console.log(`out.glb saved to ${outputPath}`);
+  } else {
+    console.error("Failed to generate model!");
   }
 }
 
