@@ -80,7 +80,8 @@
         }
 
         function loadModel() {
-            const modelUrl = 'https://41c5-65-128-108-231.ngrok-free.app/out.glb';
+            // Load from the same origin as the page instead of ngrok
+            const modelUrl = '/out.glb';  // Change from ngrok URL to relative path
             console.log('Loading model from:', modelUrl);
             
             loader.load(
@@ -90,18 +91,25 @@
                     if (model) scene.remove(model);
                     model = gltf.scene;
                     
-                    // Center model
+                    // Scale and position model appropriately
                     const box = new THREE.Box3().setFromObject(model);
+                    const size = box.getSize(new THREE.Vector3());
                     const center = box.getCenter(new THREE.Vector3());
-                    model.position.sub(center);
+                    
+                    // Move model to center
+                    model.position.x = -center.x;
+                    model.position.y = -center.y;
+                    model.position.z = -center.z;
                     
                     scene.add(model);
                     
                     // Adjust camera to frame model
-                    const size = box.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z);
-                    camera.position.set(maxDim * 2, maxDim * 2, maxDim * 2);
+                    const distance = maxDim * 2;
+                    camera.position.set(distance, distance, distance);
                     camera.lookAt(0, 0, 0);
+                    
+                    controls.target.set(0, 0, 0);
                     controls.update();
                 },
                 function(xhr) {
