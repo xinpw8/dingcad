@@ -80,8 +80,7 @@
         }
 
         function loadModel() {
-            // Load from the same origin as the page instead of ngrok
-            const modelUrl = '/out.glb';  // Change from ngrok URL to relative path
+            const modelUrl = 'http://localhost:3000/out.glb';  // Change to local server
             console.log('Loading model from:', modelUrl);
             
             loader.load(

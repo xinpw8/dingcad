@@ -35,7 +35,7 @@ fs.watch(path.join(__dirname, 'out.glb'), (eventType) => {
 });
 
 // Serve Static Files (Frontend & out.glb)
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname)); // Serve all files from root directory
 
 app.get('/out.glb', (req, res) => {
     const filePath = path.join(__dirname, 'out.glb');
