@@ -33,8 +33,22 @@ app.get('/', (req, res) => {
 });
 
 app.get('/out.glb', (req, res) => {
-    res.sendFile(glbFilePath);
+    const filePath = path.join(__dirname, 'out.glb');
+    if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', 'model/gltf-binary');
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('Model not found');
+    }
 });
+
+fetch('https://41c5-65-128-108-231.ngrok-free.app/out.glb')
+    .then((res) => res.blob())
+    .then((blob) => {
+        console.log('Fetched blob:', blob);
+    })
+    .catch((err) => console.error('Error fetching blob:', err));
+
 
 wss.on('connection', function connection(ws) {
     console.log('A new client connected.');
