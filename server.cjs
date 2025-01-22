@@ -7,6 +7,13 @@ const Pusher = require('pusher');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Add CORS headers
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
+
 // Pusher Configuration
 const pusher = new Pusher({
     appId: "1929540",
@@ -21,7 +28,8 @@ fs.watch(path.join(__dirname, 'out.glb'), (eventType) => {
     if (eventType === 'change') {
         console.log('out.glb updated');
         pusher.trigger('cad-channel', 'model-updated', {
-            message: 'out.glb has been updated.',
+            message: 'Model updated',
+            timestamp: Date.now()
         });
     }
 });
@@ -32,6 +40,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/out.glb', (req, res) => {
     const filePath = path.join(__dirname, 'out.glb');
     if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', 'model/gltf-binary');
         res.sendFile(filePath);
     } else {
         res.status(404).send('Model not found');
