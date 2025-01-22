@@ -41,6 +41,7 @@
 
             loader = new THREE.GLTFLoader();
 
+            console.log('Initializing model load...');
             loadModel();
 
             // Connect to Pusher for real-time updates
@@ -54,6 +55,7 @@
 
         function loadModel() {
             const modelPath = 'https://41c5-65-128-108-231.ngrok-free.app/out.glb'; // ngrok URL
+            console.log('Loading model from:', modelPath);
             loader.load(modelPath, (gltf) => {
                 console.log('Model loaded successfully');
                 if (model) scene.remove(model);
@@ -66,6 +68,7 @@
         }
 
         function render() {
+            console.log('Rendering scene...');
             renderer.render(scene, camera);
         }
     </script>
