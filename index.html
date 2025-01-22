@@ -3,7 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>dingcad</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DingCAD</title>
     <style>
         body {
             margin: 0;
@@ -12,287 +13,61 @@
         }
 
         canvas {
+            flex-grow: 1;
             display: block;
-            flex-grow: 1;
-        }
-
-        #editor-panel {
-            width: 400px;
-            height: 100vh;
-            background: #1e1e1e;
-            border-left: 1px solid #333;
-            padding: 10px;
-            display: flex;
-            /* Make it a flex container */
-            flex-direction: column;
-            /* Stack items vertically */
-            box-sizing: border-box;
-            color: white;
-            font-family: monospace;
-        }
-
-        #editor {
-            flex-grow: 1;
-            /* Allow it to grow and fill available vertical space */
-            margin-top: 10px;
-            width: 100%;
-            /* Ensure it matches the width of the parent */
-        }
-
-        #submit-code {
-            margin-top: 10px;
-            padding: 10px;
-            width: 100%;
-            /* Match the panel's width dynamically */
-            height: 40px;
-            background: #007acc;
-            color: rgb(36, 36, 36);
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            position: relative;
-            /* Adjusted to stay in flow */
-        }
-
-        #submit-code:hover {
-            background: #a3009b;
         }
     </style>
 </head>
 
 <body>
     <canvas></canvas>
-    <div id="editor-panel">
-        <textarea id="editor"></textarea>
-        <button id="submit-code">Submit</button>
-    </div>
-</body>
-
-<body>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/loader.min.js"></script>
-
+    <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
     <script>
-        let camera, scene, renderer, controls, loader, model;
+        let scene, camera, renderer, loader, model;
 
         init();
 
-        // Load Monaco Editor
-        require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs' } });
-        require(['vs/editor/editor.main'], function () {
-            const editor = monaco.editor.create(document.getElementById('editor'), {
-                value: `// Example code that will work in browser
-const createTableTop = (width, depth, thickness) => {
-    // Placeholder implementation
-    console.log('Creating table:', width, depth, thickness);
-    return {
-        translate: (coords) => {
-            console.log('Translating to:', coords);
-            return {};
-        }
-    };
-};
-
-const mainAssembly = () => {
-    const TABLE_WIDTH = 120;
-    const TABLE_DEPTH = 80;
-    const TABLE_HEIGHT = 75;
-    const TOP_THICKNESS = 4;
-    const LEG_WIDTH = 8;
-
-    const top = createTableTop(TABLE_WIDTH, TABLE_DEPTH, TOP_THICKNESS)
-        .translate([0, 0, TABLE_HEIGHT - TOP_THICKNESS / 2]);
-
-    return top;
-};`,
-                language: 'typescript',
-                theme: 'vs-dark',
-            });
-
-            document.getElementById('submit-code').addEventListener('click', async () => {
-                const updatedCode = editor.getValue(); // Get the user code
-                console.log('User code from editor:', updatedCode); // Log the user-provided code
-
-                try {
-                    console.log('Preparing to execute user code...');
-
-                    // Safely execute the code
-                    const execute = new Function('console', updatedCode); // Pass `console` explicitly
-                    console.log('Executing user code now...');
-                    execute(console); // Run the user's code
-                    console.log('User code executed successfully.');
-                } catch (err) {
-                    console.error('Error executing user code:', err); // Log any execution errors
-                }
-            });
-
-
-            // Helper function to transpile TypeScript to JavaScript
-            async function transpileTypeScript(tsCode) {
-                const tsUrl = 'https://cdnjs.cloudflare.com/ajax/libs/typescript/4.5.2/typescript.min.js';
-                const response = await fetch(tsUrl);
-                const ts = await response.text();
-                const transpiler = new Function('exports', 'require', 'module', '__filename', '__dirname', ts);
-                const tsModule = { exports: {} };
-                transpiler(tsModule.exports, null, tsModule, null, null);
-                const transpiled = tsModule.exports.transpileModule(tsCode, { compilerOptions: { module: 'esnext' } });
-                return transpiled.outputText;
-            }
-        });
-
-        function executeUserCode(jsCode) {
-            try {
-                const sandboxedFunction = new Function('THREE', 'scene', 'camera', 'renderer', 'controls', jsCode);
-                sandboxedFunction(THREE, scene, camera, renderer, controls);
-                render(); // Refresh the scene
-            } catch (err) {
-                console.error('Error executing user code:', err);
-            }
-        }
-
-        function updateScene() {
-            // Automatically adjust the camera to fit all objects
-            const box = new THREE.Box3().setFromObject(scene);
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const cameraDistance = maxDim * 2;
-
-            camera.position.set(center.x + cameraDistance, center.y + cameraDistance, center.z + cameraDistance);
-            camera.lookAt(center);
-            controls.target.copy(center);
-            controls.update();
-            render();
-        }
-
-
         function init() {
-            const container = document.createElement('div');
-            document.body.appendChild(container);
-
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
-            camera.position.set(200, 200, 200);
-            camera.lookAt(0, 0, 0);
-
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xf0f0f0);
-
-            // Add axes helper to debug orientation
-            const axesHelper = new THREE.AxesHelper(100);
-            scene.add(axesHelper);
-
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1);
-            scene.add(ambientLight);
-
-            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight1.position.set(10, 10, 10).normalize();
-            scene.add(directionalLight1);
-
-            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight2.position.set(-10, -10, -10).normalize();
-            scene.add(directionalLight2);
-
-            createCustomGrid();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(200, 200, 200);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
-            container.appendChild(renderer.domElement);
-
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.screenSpacePanning = false;
-            controls.update();
-
-            // Handle window resize
-            window.addEventListener('resize', onWindowResize, false);
+            document.body.appendChild(renderer.domElement);
 
             loader = new THREE.GLTFLoader();
+
             loadModel();
-        }
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            render();
-        }
-
-        function createCustomGrid() {
-            const gridHelper = new THREE.GridHelper(150, 150); // Adjusted size and divisions
-            scene.add(gridHelper);
+            // Connect to Pusher for real-time updates
+            const pusher = new Pusher('bf39691ddf040ec7cad2', { cluster: 'us3', encrypted: true });
+            const channel = pusher.subscribe('cad-channel');
+            channel.bind('model-updated', (data) => {
+                console.log(data.message);
+                loadModel(); // Reload the model on update
+            });
         }
 
         function loadModel() {
-            console.log("Loading model...");
-            // Use absolute path and add timestamp to prevent caching
-            const modelPath = `/out.glb?t=${Date.now()}`;
-            console.log("Model path:", modelPath);
-
-            loader.load(modelPath,
-                function (gltf) {
-                    console.log('Model loaded successfully', gltf);
-                    if (model) scene.remove(model);
-                    model = gltf.scene;
-
-                    // Add debug logging
-                    console.log("Model geometry:", model);
-                    if (!model || !model.children || model.children.length === 0) {
-                        console.error("Model appears to be empty");
-                        return;
-                    }
-
-                    // Reset transform
-                    model.position.set(0, 0, 0);
-                    model.rotation.set(0, 0, 0);
-                    model.scale.set(1, 1, 1);
-
-                    scene.add(model);
-
-                    // Auto-frame the model
-                    const box = new THREE.Box3().setFromObject(model);
-                    const center = box.getCenter(new THREE.Vector3());
-                    const size = box.getSize(new THREE.Vector3());
-
-                    console.log("Model bounds:", {
-                        center: center,
-                        size: size
-                    });
-
-                    // Adjust camera to frame model
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const dist = maxDim * 2;
-                    camera.position.set(dist, dist, dist);
-                    camera.lookAt(center);
-
-                    controls.target.copy(center);
-                    controls.update();
-
-                    render();
-                },
-                progress => console.log('Loading:', Math.round((progress.loaded / progress.total * 100)) + '%'),
-                error => {
-                    console.error('Error loading model:', error);
-                    console.error('Error details:', error.target?.status, error.target?.statusText);
-                }
-            );
+            const modelPath = 'https://41c5-65-128-108-231.ngrok-free.app/out.glb'; // ngrok URL
+            loader.load(modelPath, (gltf) => {
+                console.log('Model loaded successfully');
+                if (model) scene.remove(model);
+                model = gltf.scene;
+                scene.add(model);
+                render();
+            },
+                (xhr) => console.log(`${(xhr.loaded / xhr.total * 100).toFixed(2)}% loaded`),
+                (error) => console.error('Error loading model:', error));
         }
 
         function render() {
             renderer.render(scene, camera);
         }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update(); // Update controls for smooth interactivity
-            renderer.render(scene, camera);
-        }
-
-        animate(); // Start animation loop
     </script>
 </body>
 

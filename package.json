@@ -18,6 +18,7 @@
         "express": "^4.19.2",
         "fflate": "^0.8.0",
         "gl-matrix": "^3.4.3",
+        "pusher": "^5.2.0",
         "simple-dropzone": "0.8.3",
         "tsx": "^4.14.1",
         "ws": "^8.17.0"

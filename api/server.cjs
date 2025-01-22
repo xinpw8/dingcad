@@ -1,48 +1,44 @@
 const path = require('path');
 const express = require('express');
 const fs = require('fs');
+const Pusher = require('pusher');
 
+// Initialize Express
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Move up one directory to serve files from root
-app.use(express.static(path.join(__dirname, '..'))); 
-app.use(express.json());
-
-app.use('/manifold_lib', express.static(path.join(__dirname, '..', 'manifold_lib')));
-app.use('/parts', express.static(path.join(__dirname, '..', 'parts')));
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'index.html'));
+// Pusher Configuration
+const pusher = new Pusher({
+    appId: "1929540",
+    key: "bf39691ddf040ec7cad2",
+    secret: "99fd1be0107b33d8f484",
+    cluster: "us3",
+    useTLS: true,
 });
 
-// Add specific route for GLB file
-app.get('/out.glb', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'out.glb'));
-});
-
-app.post('/api/save', async (req, res) => {
-    const code = req.body.code;
-    try {
-        // Instead of writing to filesystem, use memory or database
-        // For now, we'll just return a mock success
-        console.log('Received code:', code);
-        
-        // TODO: Implement proper model generation
-        // For now just returning success
-        res.json({ 
-            success: true,
-            message: 'Code received successfully'
-        });
-    } catch (error) {
-        console.error('API Error:', error);
-        res.status(500).json({ 
-            error: error.message,
-            details: 'Server failed to process request'
+// Watch for `out.glb` Changes
+fs.watch(path.join(__dirname, 'out.glb'), (eventType) => {
+    if (eventType === 'change') {
+        console.log('out.glb updated');
+        pusher.trigger('cad-channel', 'model-updated', {
+            message: 'out.glb has been updated.',
         });
     }
 });
 
+// Serve Static Files (Frontend & out.glb)
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/out.glb', (req, res) => {
+    const filePath = path.join(__dirname, 'out.glb');
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('Model not found');
+    }
+});
+
+// Start Server
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`Server running at http://localhost:${port}`);
 });
